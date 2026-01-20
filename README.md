@@ -24,14 +24,6 @@ octodns==1.5.0
 octodns-domeneshop==0.0.1
 ```
 
-##### SHAs
-
-```
-# Start with the latest/specific versions and don't just copy what's here
--e git+https://git@github.com/octodns/octodns.git@9da19749e28f68407a1c246dfdf65663cdc1c422#egg=octodns
--e git+https://git@github.com/auduny/octodns-domeneshop.git@main#egg=octodns_domeneshop
-```
-
 ### Configuration
 
 ```yaml
@@ -82,8 +74,8 @@ See the [/script/](/script/) directory for some tools to help with the developme
 
 ```bash
 # Create and activate virtual environment
-python3 -m venv env
-source env/bin/activate
+python3 -m venv .venv
+source .venv/bin/activate
 
 # Install dependencies
 pip install -e ".[dev]"
