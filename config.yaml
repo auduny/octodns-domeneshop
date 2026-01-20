@@ -1,0 +1,20 @@
+---
+providers:
+  domeneshop:
+    class: octodns_domeneshop.DomeneshopProvider
+    token: env/DOMENESHOP_TOKEN
+    secret: env/DOMENESHOP_SECRET
+
+  yaml:
+    class: octodns.provider.yaml.YamlProvider
+    directory: ./zones
+    enforce_order: false
+
+zones:
+  # Dynamic zone discovery - '*' will fetch all zones from the provider
+  '*':
+    sources:
+      - yaml
+    targets:
+      - domeneshop
+

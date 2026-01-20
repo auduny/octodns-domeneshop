@@ -1,0 +1,16 @@
+#!/bin/bash
+
+set -e
+
+cd "$(dirname "$0")/.."
+
+if [ -z "$VENV_NAME" ]; then
+    VENV_NAME="env"
+fi
+
+source "$VENV_NAME/bin/activate"
+
+SOURCES="$(find *.py octodns_domeneshop tests -name "*.py")"
+
+isort "$@" $SOURCES
+black "$@" $SOURCES

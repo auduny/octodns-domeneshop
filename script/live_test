@@ -1,0 +1,117 @@
+#!/usr/bin/env python
+"""
+Live test script to verify connectivity and extraction from Domeneshop API.
+
+Usage:
+    # Set your credentials
+    export DOMENESHOP_TOKEN=your_token
+    export DOMENESHOP_SECRET=your_secret
+
+    # Run the test
+    ./script/live_test
+
+    # Or to test a specific domain:
+    ./script/live_test example.com
+"""
+
+import os
+import sys
+
+# Add the project root to path so we can import the module
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from octodns.zone import Zone
+
+from octodns_domeneshop import DomeneshopClient, DomeneshopProvider
+
+
+def main():
+    token = os.environ.get('DOMENESHOP_TOKEN')
+    secret = os.environ.get('DOMENESHOP_SECRET')
+
+    if not token or not secret:
+        print("Error: DOMENESHOP_TOKEN and DOMENESHOP_SECRET environment variables must be set")
+        print()
+        print("Usage:")
+        print("  export DOMENESHOP_TOKEN=your_token")
+        print("  export DOMENESHOP_SECRET=your_secret")
+        print("  ./script/live_test [domain.com]")
+        sys.exit(1)
+
+    # Create client and provider
+    client = DomeneshopClient(token, secret)
+    provider = DomeneshopProvider('live-test', token, secret)
+
+    print("=" * 60)
+    print("Domeneshop Live Test")
+    print("=" * 60)
+
+    # Test 1: List all domains
+    print("\n[1] Listing all domains...")
+    try:
+        domains = client.domains()
+        print(f"    Found {len(domains)} domain(s):")
+        for domain in domains:
+            print(f"      - {domain['domain']} (id: {domain['id']})")
+    except Exception as e:
+        print(f"    ERROR: {e}")
+        sys.exit(1)
+
+    if not domains:
+        print("\n    No domains found in your account.")
+        sys.exit(0)
+
+    # Test 2: List zones via provider
+    print("\n[2] Listing zones via provider.list_zones()...")
+    try:
+        zones = provider.list_zones()
+        print(f"    Found {len(zones)} zone(s):")
+        for zone in zones:
+            print(f"      - {zone}")
+    except Exception as e:
+        print(f"    ERROR: {e}")
+
+    # Test 3: Extract records for a specific domain
+    target_domain = None
+    if len(sys.argv) > 1:
+        target_domain = sys.argv[1].rstrip('.')
+    else:
+        # Use the first domain
+        target_domain = domains[0]['domain']
+
+    print(f"\n[3] Extracting records for '{target_domain}'...")
+    try:
+        zone = Zone(f"{target_domain}.", [])
+        provider.populate(zone)
+        
+        print(f"    Found {len(zone.records)} record(s):")
+        for record in sorted(zone.records, key=lambda r: (r.name, r._type)):
+            if record.name == '':
+                name = '@'
+            else:
+                name = record.name
+            print(f"      {name:30} {record._type:6} {record.ttl:6} {record.data}")
+    except Exception as e:
+        print(f"    ERROR: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
+
+    # Test 4: Raw API records
+    print(f"\n[4] Raw API records for '{target_domain}'...")
+    try:
+        domain_id = client.domain_id_for_name(target_domain)
+        records = client.records(domain_id)
+        print(f"    Found {len(records)} raw record(s) from API:")
+        for record in records:
+            print(f"      {record}")
+    except Exception as e:
+        print(f"    ERROR: {e}")
+
+    print("\n" + "=" * 60)
+    print("Live test completed successfully!")
+    print("=" * 60)
+
+
+if __name__ == '__main__':
+    main()

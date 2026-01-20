@@ -1,0 +1,103 @@
+[
+  {
+    "id": 1,
+    "host": "@",
+    "ttl": 300,
+    "type": "A",
+    "data": "1.2.3.4"
+  },
+  {
+    "id": 2,
+    "host": "@",
+    "ttl": 300,
+    "type": "A",
+    "data": "1.2.3.5"
+  },
+  {
+    "id": 3,
+    "host": "@",
+    "ttl": 600,
+    "type": "AAAA",
+    "data": "2001:db8:85a3::8a2e:370:7334"
+  },
+  {
+    "id": 4,
+    "host": "cname",
+    "ttl": 300,
+    "type": "CNAME",
+    "data": "unit.tests"
+  },
+  {
+    "id": 5,
+    "host": "@",
+    "ttl": 300,
+    "type": "MX",
+    "data": "mx1.unit.tests",
+    "priority": 10
+  },
+  {
+    "id": 6,
+    "host": "@",
+    "ttl": 300,
+    "type": "MX",
+    "data": "mx2.unit.tests",
+    "priority": 20
+  },
+  {
+    "id": 9,
+    "host": "_srv._tcp",
+    "ttl": 600,
+    "type": "SRV",
+    "data": "foo-1.unit.tests",
+    "priority": 10,
+    "weight": 20,
+    "port": 30
+  },
+  {
+    "id": 10,
+    "host": "_srv._tcp",
+    "ttl": 600,
+    "type": "SRV",
+    "data": "foo-2.unit.tests",
+    "priority": 12,
+    "weight": 20,
+    "port": 30
+  },
+  {
+    "id": 11,
+    "host": "txt",
+    "ttl": 600,
+    "type": "TXT",
+    "data": "Bah bah black sheep"
+  },
+  {
+    "id": 12,
+    "host": "txt",
+    "ttl": 600,
+    "type": "TXT",
+    "data": "have you any wool"
+  },
+  {
+    "id": 13,
+    "host": "@",
+    "ttl": 3600,
+    "type": "CAA",
+    "data": "ca.unit.tests",
+    "flags": 0,
+    "tag": "issue"
+  },
+  {
+    "id": 15,
+    "host": "sub",
+    "ttl": 3600,
+    "type": "NS",
+    "data": "ns1.unit.tests"
+  },
+  {
+    "id": 16,
+    "host": "sub",
+    "ttl": 3600,
+    "type": "NS",
+    "data": "ns2.unit.tests"
+  }
+]

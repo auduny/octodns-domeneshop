@@ -1,0 +1,34 @@
+[
+  {
+    "id": 1,
+    "domain": "unit.tests",
+    "expiry_date": "2025-08-24",
+    "registered_date": "2020-08-24",
+    "renew": true,
+    "registrant": "Test User",
+    "status": "active",
+    "nameservers": ["ns1.hyp.net", "ns2.hyp.net", "ns3.hyp.net"],
+    "services": {
+      "registrar": true,
+      "dns": true,
+      "email": false,
+      "webhotel": "none"
+    }
+  },
+  {
+    "id": 2,
+    "domain": "other.tests",
+    "expiry_date": "2025-08-24",
+    "registered_date": "2020-08-24",
+    "renew": true,
+    "registrant": "Test User",
+    "status": "active",
+    "nameservers": ["ns1.hyp.net", "ns2.hyp.net", "ns3.hyp.net"],
+    "services": {
+      "registrar": true,
+      "dns": true,
+      "email": false,
+      "webhotel": "none"
+    }
+  }
+]
