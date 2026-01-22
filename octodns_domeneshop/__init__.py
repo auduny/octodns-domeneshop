@@ -374,28 +374,27 @@ class DomeneshopProvider(BaseProvider):
                 host = ''
             values[host][record['type']].append(record)
 
-        # Only try to get forwards or registrar nameservers if zone exists
-        if zone.name in self._zone_records:
-            forwards = defaultdict(list)
-            for forward in self.zone_forwards(zone):
-                host = forward['host']
-                if host == '@':
-                    host = ''
-                if not forward['frame']:
-                    forwards[host].append(forward)
+        # Try to get forwards and registrar nameservers even when there are no DNS records
+        forwards = defaultdict(list)
+        for forward in self.zone_forwards(zone):
+            host = forward['host']
+            if host == '@':
+                host = ''
+            if not forward['frame']:
+                forwards[host].append(forward)
 
-            if forwards:
-                for host, forward_list in forwards.items():
-                    values[host]['URLFWD'].extend(forward_list)
+        if forwards:
+            for host, forward_list in forwards.items():
+                values[host]['URLFWD'].extend(forward_list)
 
-            # Optionally include registrar nameservers as root NS records for dumps
-            if self._include_nameservers:
-                nameservers = self.zone_nameservers(zone)
-                if nameservers and ('NS' not in values['']):
-                    ns_records = [
-                        {'host': '@', 'ttl': 3600, 'data': ns} for ns in nameservers
-                    ]
-                    values['']['NS'].extend(ns_records)
+        # Optionally include registrar nameservers as root NS records for dumps
+        if self._include_nameservers:
+            nameservers = self.zone_nameservers(zone)
+            if nameservers and ('NS' not in values['']):
+                ns_records = [
+                    {'host': '@', 'ttl': 3600, 'data': ns} for ns in nameservers
+                ]
+                values['']['NS'].extend(ns_records)
 
         before = len(zone.records)
         for name, types in values.items():
