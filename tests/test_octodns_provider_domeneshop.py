@@ -92,6 +92,20 @@ class TestDomeneshopProvider(TestCase):
                     'https://api.domeneshop.no/v0/domains/1/dns',
                     text=fh.read(),
                 )
+            # Mock domain endpoint for nameservers
+            mock.get(
+                'https://api.domeneshop.no/v0/domains/1',
+                json={
+                    'id': 1,
+                    'domain': 'unit.tests',
+                    'nameservers': ['ns1.hyp.net', 'ns2.hyp.net', 'ns3.hyp.net'],
+                },
+            )
+            # Mock forwards endpoint (empty list)
+            mock.get(
+                'https://api.domeneshop.no/v0/domains/1/forwards/',
+                json=[],
+            )
 
             zone = Zone('unit.tests.', [])
             provider.populate(zone)
@@ -104,6 +118,112 @@ class TestDomeneshopProvider(TestCase):
         provider.populate(again)
         self.assertEqual(8, len(again.records))
 
+    def test_populate_include_nameservers(self):
+        provider = DomeneshopProvider(
+            'test', 'token', 'secret', include_nameservers=True
+        )
+
+        with requests_mock() as mock:
+            mock.get(
+                'https://api.domeneshop.no/v0/domains',
+                json=[
+                    {'id': 1, 'domain': 'unit.tests'},
+                    {'id': 2, 'domain': 'other.tests'},
+                ],
+            )
+            with open('tests/fixtures/domeneshop-records.json') as fh:
+                mock.get(
+                    'https://api.domeneshop.no/v0/domains/1/dns',
+                    text=fh.read(),
+                )
+            mock.get(
+                'https://api.domeneshop.no/v0/domains/1',
+                json={
+                    'id': 1,
+                    'domain': 'unit.tests',
+                    'nameservers': ['ns1.hyp.net', 'ns2.hyp.net', 'ns3.hyp.net'],
+                },
+            )
+            mock.get(
+                'https://api.domeneshop.no/v0/domains/1/forwards/',
+                json=[],
+            )
+
+            zone = Zone('unit.tests.', [])
+            provider.populate(zone)
+            # Expect the original 8 plus root NS (nameservers) = 9
+            self.assertEqual(9, len(zone.records))
+            ns_root = [r for r in zone.records if r._type == 'NS' and r.name == '']
+            self.assertEqual(1, len(ns_root))
+            self.assertEqual(3, len(ns_root[0].values))
+
+    def test_populate_with_forwards(self):
+        provider = DomeneshopProvider('test', 'token', 'secret')
+
+        with requests_mock() as mock:
+            mock.get(
+                'https://api.domeneshop.no/v0/domains',
+                json=[
+                    {'id': 1, 'domain': 'unit.tests'},
+                ],
+            )
+            with open('tests/fixtures/domeneshop-records.json') as fh:
+                mock.get(
+                    'https://api.domeneshop.no/v0/domains/1/dns',
+                    text=fh.read(),
+                )
+            with open('tests/fixtures/domeneshop-forwards.json') as fh:
+                mock.get(
+                    'https://api.domeneshop.no/v0/domains/1/forwards/',
+                    text=fh.read(),
+                )
+            mock.get(
+                'https://api.domeneshop.no/v0/domains/1',
+                json={
+                    'id': 1,
+                    'domain': 'unit.tests',
+                    'nameservers': ['ns1.hyp.net', 'ns2.hyp.net', 'ns3.hyp.net'],
+                },
+            )
+
+            zone = Zone('unit.tests.', [])
+            provider.populate(zone)
+
+            urlfwd = [r for r in zone.records if r._type == 'URLFWD']
+            self.assertEqual(2, len(urlfwd))
+            root_fwd = [r for r in urlfwd if r.name == '']
+            self.assertEqual(1, len(root_fwd))
+            self.assertEqual(3600, root_fwd[0].ttl)
+            self.assertEqual('/', root_fwd[0].values[0].path)
+            self.assertEqual('https://www.unit.tests/', root_fwd[0].values[0].target)
+
+    def test_apply_root_ns_updates_nameservers(self):
+        provider = DomeneshopProvider('test', 'token', 'secret', strict_supports=False)
+
+        provider._client.nameservers_update = Mock()
+        provider._get_domain_id = Mock(return_value=1)
+
+        zone = Zone('unit.tests.', [])
+        ns_record = Record.new(
+            zone,
+            '',
+            {
+                'type': 'NS',
+                'ttl': 3600,
+                'values': ['ns1.example.com.', 'ns2.example.com.'],
+            },
+            lenient=False,
+        )
+
+        change = Mock()
+        change.new = ns_record
+
+        provider._apply_Create(change)
+
+        provider._client.nameservers_update.assert_called_once_with(
+            1, ['ns1.example.com', 'ns2.example.com']
+        )
+
     def test_apply(self):
         provider = DomeneshopProvider('test', 'token', 'secret', strict_supports=False)
 
@@ -114,11 +234,15 @@ class TestDomeneshopProvider(TestCase):
 
         # Set up the zone records cache for deletes to work
         provider._zone_records['unit.tests.'] = []
+        provider._zone_forwards['unit.tests.'] = []
+        provider._zone_nameservers['unit.tests.'] = []
         provider._domain_ids['unit.tests.'] = 1
 
-        # non-existent domain records
+        # non-existent domain records, forwards, and nameservers
         resp.json.side_effect = [
             [],  # empty records for populate
+            [],  # empty forwards for populate
+            {},  # empty domain info for populate
         ]
         plan = provider.plan(self.expected)
 
@@ -186,6 +310,8 @@ class TestDomeneshopProvider(TestCase):
                 'type': 'A',
             },
         ]
+        provider._zone_forwards['unit.tests.'] = []
+        provider._zone_nameservers['unit.tests.'] = []
 
         wanted = Zone('unit.tests.', [])
         wanted.add_record(

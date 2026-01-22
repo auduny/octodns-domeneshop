@@ -34,6 +34,9 @@ providers:
     token: env/DOMENESHOP_TOKEN
     # API secret (required)
     secret: env/DOMENESHOP_SECRET
+    # Include registrar nameservers as root NS records when dumping (optional)
+    # Used if you only use domeneshop for registrar for some domains.
+    include_nameservers: false
 ```
 
 ### Credentials

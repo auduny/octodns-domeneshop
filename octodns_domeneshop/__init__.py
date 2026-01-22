@@ -107,6 +107,26 @@ class DomeneshopClient:
         """Delete a DNS record"""
         self._request('DELETE', f'/domains/{domain_id}/dns/{record_id}')
 
+    def forwards(self, domain_id):
+        """List all HTTP forwards for a domain"""
+        return self._request('GET', f'/domains/{domain_id}/forwards/').json()
+
+    def forward_create(self, domain_id, forward):
+        """Create an HTTP forward for a domain"""
+        self._request('POST', f'/domains/{domain_id}/forwards/', data=forward)
+
+    def forward_update(self, domain_id, host, forward):
+        """Update an HTTP forward"""
+        self._request('PUT', f'/domains/{domain_id}/forwards/{host}', data=forward)
+
+    def forward_delete(self, domain_id, host):
+        """Delete an HTTP forward"""
+        self._request('DELETE', f'/domains/{domain_id}/forwards/{host}')
+
+    def nameservers_update(self, domain_id, nameservers):
+        """Update nameservers for a domain"""
+        self._request('PUT', f'/domains/{domain_id}', data={'nameservers': nameservers})
+
 
 class DomeneshopProvider(BaseProvider):
     """
@@ -122,6 +142,7 @@ class DomeneshopProvider(BaseProvider):
 
     SUPPORTS_GEO = False
     SUPPORTS_DYNAMIC = False
+    SUPPORTS_ROOT_NS = True
     SUPPORTS = set(
         (
             'A',
@@ -135,17 +156,22 @@ class DomeneshopProvider(BaseProvider):
             'SRV',
             'TLSA',
             'TXT',
+            'URLFWD',
         )
     )
 
-    def __init__(self, id, token, secret, *args, **kwargs):
+    def __init__(self, id, token, secret, include_nameservers=False, *args, **kwargs):
         self.log = logging.getLogger(f'DomeneshopProvider[{id}]')
         self.log.debug('__init__: id=%s, token=***, secret=***', id)
         super().__init__(id, *args, **kwargs)
         self._client = DomeneshopClient(token, secret)
+        # When enabled, emit domain nameservers as root NS records during populate/dump
+        self._include_nameservers = include_nameservers
 
         self._zone_records = {}
         self._domain_ids = {}
+        self._zone_forwards = {}
+        self._zone_nameservers = {}
 
     def _get_domain_id(self, zone_name):
         """
@@ -274,6 +300,21 @@ class DomeneshopProvider(BaseProvider):
             )
         return {'type': _type, 'ttl': records[0]['ttl'], 'values': values}
 
+    def _data_for_URLFWD(self, _type, forwards):
+        values = []
+        for forward in forwards:
+            values.append(
+                {
+                    # Domeneshop forwards do not expose TTLs; use a sensible default
+                    'path': '/',
+                    'target': forward['url'],
+                    'code': 301,
+                    'masking': 0,
+                    'query': 1,
+                }
+            )
+        return {'type': _type, 'ttl': 3600, 'values': values}
+
     def zone_records(self, zone):
         if zone.name not in self._zone_records:
             try:
@@ -283,6 +324,27 @@ class DomeneshopProvider(BaseProvider):
                 return []
 
         return self._zone_records[zone.name]
+
+    def zone_forwards(self, zone):
+        if zone.name not in self._zone_forwards:
+            try:
+                domain_id = self._get_domain_id(zone.name)
+                self._zone_forwards[zone.name] = self._client.forwards(domain_id)
+            except DomeneshopClientNotFound:
+                return []
+
+        return self._zone_forwards[zone.name]
+
+    def zone_nameservers(self, zone):
+        if zone.name not in self._zone_nameservers:
+            try:
+                domain_id = self._get_domain_id(zone.name)
+                domain = self._client.domain(domain_id)
+                self._zone_nameservers[zone.name] = domain.get('nameservers', [])
+            except DomeneshopClientNotFound:
+                return []
+
+        return self._zone_nameservers[zone.name]
 
     def list_zones(self):
         return [f'{d["domain"]}.' for d in self._client.domains()]
@@ -296,7 +358,10 @@ class DomeneshopProvider(BaseProvider):
         )
 
         values = defaultdict(lambda: defaultdict(list))
-        for record in self.zone_records(zone):
+        
+        # Get records for the zone
+        records_list = self.zone_records(zone)
+        for record in records_list:
             _type = record['type']
             if _type not in self.SUPPORTS:
                 self.log.warning(
@@ -309,9 +374,35 @@ class DomeneshopProvider(BaseProvider):
                 host = ''
             values[host][record['type']].append(record)
 
+        # Only try to get forwards if zone exists
+        if records_list:
+            forwards = defaultdict(list)
+            for forward in self.zone_forwards(zone):
+                host = forward['host']
+                if host == '@':
+                    host = ''
+                if not forward['frame']:
+                    forwards[host].append(forward)
+
+            if forwards:
+                for host, forward_list in forwards.items():
+                    values[host]['URLFWD'].extend(forward_list)
+
+            # Optionally include registrar nameservers as root NS records for dumps
+            if self._include_nameservers:
+                nameservers = self.zone_nameservers(zone)
+                if nameservers and ('NS' not in values['']):
+                    ns_records = [
+                        {'host': '@', 'ttl': 3600, 'data': ns} for ns in nameservers
+                    ]
+                    values['']['NS'].extend(ns_records)
+
         before = len(zone.records)
         for name, types in values.items():
             for _type, records in types.items():
+                # Skip if records list is empty
+                if not records:
+                    continue
                 data_for = getattr(self, f'_data_for_{_type}')
                 record = Record.new(
                     zone,
@@ -442,12 +533,32 @@ class DomeneshopProvider(BaseProvider):
                 'usage': value.certificate_usage,
             }
 
+    def _params_for_URLFWD(self, record):
+        host = record.name if record.name else '@'
+        for value in record.values:
+            yield {
+                'host': host,
+                'url': value.target,
+                'frame': False,
+            }
+
     def _apply_Create(self, change):
         new = change.new
         params_for = getattr(self, f'_params_for_{new._type}')
         domain_id = self._get_domain_id(new.zone.name)
-        for params in params_for(new):
-            self._client.record_create(domain_id, params)
+
+        if new._type == 'URLFWD':
+            # Create HTTP forwards
+            for params in params_for(new):
+                self._client.forward_create(domain_id, params)
+        elif new._type == 'NS' and new.name == '':
+            # Update root nameservers
+            nameservers = [v.rstrip('.') for v in new.values]
+            self._client.nameservers_update(domain_id, nameservers)
+        else:
+            # Create DNS records
+            for params in params_for(new):
+                self._client.record_create(domain_id, params)
 
     def _apply_Update(self, change):
         self._apply_Delete(change)
@@ -459,12 +570,25 @@ class DomeneshopProvider(BaseProvider):
         domain_id = self._get_domain_id(zone.name)
         # Domeneshop uses @ for the root
         target_host = existing.name if existing.name else '@'
-        for record in self.zone_records(zone):
-            if (
-                target_host == record['host']
-                and existing._type == record['type']
-            ):
-                self._client.record_delete(domain_id, record['id'])
+
+        if existing._type == 'URLFWD':
+            # Delete HTTP forwards
+            for forward in self.zone_forwards(zone):
+                if target_host == forward['host']:
+                    self._client.forward_delete(domain_id, forward['host'])
+        elif existing._type == 'NS' and existing.name == '':
+            # For root NS records, we need to update nameservers
+            # This is typically not allowed to be deleted, only updated
+            # So we skip deletion for root NS records
+            pass
+        else:
+            # Delete DNS records
+            for record in self.zone_records(zone):
+                if (
+                    target_host == record['host']
+                    and existing._type == record['type']
+                ):
+                    self._client.record_delete(domain_id, record['id'])
 
     def _apply(self, plan):
         desired = plan.desired
@@ -477,5 +601,7 @@ class DomeneshopProvider(BaseProvider):
             class_name = change.__class__.__name__
             getattr(self, f'_apply_{class_name}')(change)
 
-        # Clear out the cache if any
+        # Clear out the caches if any
         self._zone_records.pop(desired.name, None)
+        self._zone_forwards.pop(desired.name, None)
+        self._zone_nameservers.pop(desired.name, None)

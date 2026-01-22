@@ -4,6 +4,7 @@ providers:
     class: octodns_domeneshop.DomeneshopProvider
     token: env/DOMENESHOP_TOKEN
     secret: env/DOMENESHOP_SECRET
+    include_nameservers: true
 
   yaml:
     class: octodns.provider.yaml.YamlProvider

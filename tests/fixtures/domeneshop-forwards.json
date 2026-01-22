@@ -1,0 +1,12 @@
+[
+  {
+    "host": "@",
+    "url": "https://www.unit.tests/",
+    "frame": false
+  },
+  {
+    "host": "www",
+    "url": "https://example.unit.tests/path",
+    "frame": false
+  }
+]
