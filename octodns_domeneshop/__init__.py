@@ -374,8 +374,8 @@ class DomeneshopProvider(BaseProvider):
                 host = ''
             values[host][record['type']].append(record)
 
-        # Only try to get forwards if zone exists
-        if records_list:
+        # Only try to get forwards or registrar nameservers if zone exists
+        if zone.name in self._zone_records:
             forwards = defaultdict(list)
             for forward in self.zone_forwards(zone):
                 host = forward['host']
