@@ -363,6 +363,11 @@ class DomeneshopProvider(BaseProvider):
         records_list = self.zone_records(zone)
         for record in records_list:
             _type = record['type']
+            # Map Domeneshop ANAME to octoDNS ALIAS
+            if _type == 'ANAME':
+                _type = 'ALIAS'
+                record = record.copy()
+                record['type'] = 'ALIAS'
             if _type not in self.SUPPORTS:
                 self.log.warning(
                     'populate: skipping unsupported %s record', _type
@@ -372,7 +377,7 @@ class DomeneshopProvider(BaseProvider):
             host = record['host']
             if host == '@':
                 host = ''
-            values[host][record['type']].append(record)
+            values[host][_type].append(record)
 
         # Try to get forwards and registrar nameservers even when there are no DNS records
         forwards = defaultdict(list)
